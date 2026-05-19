@@ -19,12 +19,7 @@ from modules.sheets.core_functions   import generate_doc_sheets
 from modules.excel.core_functions    import generate_doc_excel
 from core.pdf                        import build_doc_pdf
 
-PLATFORM_LABELS = {
-    "power_bi": "Power BI (DAX)",
-    "looker":   "Looker Studio",
-    "sheets":   "Google Sheets",
-    "excel":    "Microsoft Excel",
-}
+
 
 GENERATOR_MAP = {
     "power_bi": generate_doc_powerbi,
@@ -110,7 +105,7 @@ def render_tabs_docs():
         schema   = ss.docs_schema
         n        = len(schema.get("tables", []))
         n_lotes  = max(1, (n + 2) // 3)
-        plat     = PLATFORM_LABELS.get(ss.docs_platform, ss.docs_platform)
+        plat     = ""
         gen_func = GENERATOR_MAP.get(ss.docs_platform, generate_doc_powerbi)
 
         with st.status(

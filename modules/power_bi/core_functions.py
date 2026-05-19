@@ -11,7 +11,6 @@ from config.settings import BATCH_SIZE_MEDIDAS, DOC_CALL_PAUSE, BATCH_SIZE_DOC
 # EXPLICADOR DAX
 # ══════════════════════════════════════════════════════════════════════════════
 
-
 def _limpiar_resumen(texto):
     import json as _j
     texto = texto.strip()
@@ -19,7 +18,7 @@ def _limpiar_resumen(texto):
         try:
             p = _j.loads(texto)
             if isinstance(p, dict):
-                for k in ("resumen","summary","descripcion"):
+                for k in ("resumen", "summary", "descripcion"):
                     if k in p and isinstance(p[k], str):
                         return p[k].strip()[:600]
         except Exception:
@@ -28,35 +27,35 @@ def _limpiar_resumen(texto):
     texto = re.sub(r"\*\*(.+?)\*\*", r"\1", texto)
     return re.sub(r"\n{2,}", " ", texto).strip()[:600]
 
+
 def explain_dax(dax_code: str, schema: dict) -> str:
     """
-    EXPLICA UNA MEDIDA DAX EN TONO DIDÁCTICO Y AUDITA SU INTEGRIDAD 
+    EXPLICA UNA MEDIDA DAX EN TONO DIDÁCTICO Y AUDITA SU INTEGRIDAD
     CONTRA EL MODELO SEMÁNTICO EN ESTRELLA COMPLETO.
     """
-    import json
-
-    # Preparar el contexto relacional profundo (pasamos el JSON completo con columnas y relaciones)
     schema_ctx = ""
     if schema:
-        schema_ctx = f"CONTEXTO DEL MODELO SEMÁNTICO REAL (Tablas, Columnas y Relaciones):\n{json.dumps(schema, ensure_ascii=False)}\n\n"
+        schema_ctx = (
+            f"CONTEXTO DEL MODELO SEMÁNTICO REAL (Tablas, Columnas y Relaciones):\n"
+            f"{json.dumps(schema, ensure_ascii=False)}\n\n"
+        )
 
     system_msg = (
         "Actúas como un Arquitecto de Business Intelligence Senior y Auditor de Modelos Tabulares.\n"
         "Tu tarea es explicar medidas DAX de forma clara y didáctica, pero validando su coherencia con el modelo.\n\n"
-        
         "REGLAS CRÍTICAS DE AUDITORÍA SEMÁNTICA:\n"
         "1. Validación Estricta de Campos: Compara minuciosamente los nombres de las tablas y columnas usadas en la fórmula con el MODELO SEMÁNTICO REAL provisto.\n"
-        "2. Detección de Incoherencias: Si detectas que la fórmula intenta cruzar o asociar campos que no tienen relación lógica en el esquema (Ej: mapear 'Vendedor' contra 'ClienteID' o usar columnas inexistentes), debes iniciar tu respuesta OBLIGATORIAMENTE con un bloque destacado llamado '⚠️ ALERTA DE INTEGRIDAD SEMÁNTICA' explicando con rigor técnico el error de diseño.\n"
-        "3. Buenas Prácticas DAX: Verifica si la medida usa el operador '/' (prohibido, debe usar DIVIDE) o si mezcla sintaxis al poner nombres de tablas antes de invocar una medida.\n\n"
+        "2. Detección de Incoherencias: Si detectas que la fórmula intenta cruzar o asociar campos que no tienen relación lógica en el esquema, debes iniciar tu respuesta OBLIGATORIAMENTE con un bloque destacado llamado 'ALERTA DE INTEGRIDAD SEMÁNTICA' explicando con rigor técnico el error de diseño.\n"
+        "3. Buenas Prácticas DAX: Verifica si la medida usa el operador '/' (prohibido, debe usar DIVIDE) o si mezcla sintaxis al poner nombres de tablas antes de invocar una medida.\n"
         "4. PROHIBICIÓN ESTRICTA: No utilices ningún tipo de emoji, icono o carácter gráfico especial en toda la respuesta.\n\n"
         "FORMATO DE RESPUESTA OBLIGATORIO:\n"
-        "1. **⚠️ ALERTA DE INTEGRIDAD SEMÁNTICA** — (Solo si la fórmula contradice o inventa campos del esquema real).\n"
+        "1. **ALERTA DE INTEGRIDAD SEMÁNTICA** — (Solo si la fórmula contradice o inventa campos del esquema real).\n"
         "2. **Qué hace esta medida** — Resumen en 1-2 frases simples adaptadas al negocio.\n"
         "3. **Explicación línea por línea** — Desglose didáctico analizando variables (VAR), iteradores y el Contexto de Filtro (CALCULATE).\n"
         "4. **Funciones utilizadas** — Lista cada función y una descripción breve de su comportamiento tabular.\n"
         "5. **Sugerencias y Optimización** — Propón mejoras de rendimiento o la corrección exacta del código basándote en las columnas reales del esquema.\n\n"
-        + schema_ctx +
-        "Usa un tono didáctico, ideal para un analista junior.\n"
+        + schema_ctx
+        + "Usa un tono didáctico, ideal para un analista junior.\n"
         "NUNCA uses bloques de código markdown generales — solo texto estructurado en español."
     )
 
@@ -67,6 +66,7 @@ def explain_dax(dax_code: str, schema: dict) -> str:
         ],
         temperature=0.1, max_tokens=2500,
     )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # EVALUADOR DAX (LÓGICA DE NEGOCIO)
@@ -189,70 +189,13 @@ def generate_medidas_base(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DOCUMENTADOR (ANÁLISIS POR LOTES + RESUMEN)
+# DOCUMENTADOR (MARKDOWN PURO — SIN JSON, SIN RIESGO DE PARSE FALLIDO)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _parse_json_response(raw: str) -> list:
-    raw = re.sub(r"```(?:json)?\n?", "", raw).strip().rstrip("```").strip()
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, list):
-            return parsed
-        if isinstance(parsed, dict):
-            return parsed.get("tablas", [parsed])
-        return []
-    except Exception:
-        return []
-
-
-def _analyze_batch(batch: list, all_table_names: list) -> list:
-    system_msg = (
-        "Eres un experto en modelado de datos, Power BI y DAX. "
-        "Analiza las tablas y devuelve ÚNICAMENTE una lista JSON válida, sin markdown.\n\n"
-        "Formato por tabla:\n"
-        "[{\n"
-        '  "nombre": "nombre_tabla",\n'
-        '  "descripcion": "propósito claro en 1-2 frases",\n'
-        '  "columnas": [{"nombre": "col", "proposito": "qué dato almacena"}],\n'
-        '  "relaciones": ["con qué tablas se relaciona y por qué campo"],\n'
-        '  "dax_sugeridos": [\n'
-        '    {"nombre": "Nombre Medida", "codigo": "Medida =\\n    VAR x = ...\\n    RETURN x", "descripcion": "qué calcula"}\n'
-        '  ]\n'
-        "}]\n\n"
-        "REGLAS PARA EL DAX:\n"
-        "- Propón exactamente 2 medidas por tabla.\n"
-        "- Usa: CALCULATE, DIVIDE, SUMX, AVERAGEX, RANKX, DATEADD, SAMEPERIODLASTYEAR, "
-        "TOTALYTD, FILTER, ALL, ALLEXCEPT, VAR...RETURN.\n"
-        "- Comenta el DAX con -- en las líneas clave.\n\n"
-        f"Contexto del modelo: {', '.join(all_table_names)}\n"
-        "Devuelve SOLO la lista JSON."
-    )
-    raw = call_llm(
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user",   "content": f"TABLAS A ANALIZAR: {json.dumps(batch)}"},
-        ],
-        temperature=0.1, max_tokens=5000,
-    )
-    return _parse_json_response(raw.strip())
-
-
-def _generate_resumen(all_table_names: list) -> str:
-    raw = call_llm(
-        messages=[
-            {"role": "system", "content":
-                "Eres un experto en modelado de datos. Escribe SOLO un párrafo de 2-3 frases "
-                "describiendo el modelo basándote en los nombres de las tablas. Solo texto, en español."},
-            {"role": "user", "content": f"Tablas: {', '.join(all_table_names)}"},
-        ],
-        temperature=0.1, max_tokens=300,
-    )
-    return raw.strip()
-
-def _analyze_batch_md(batch, all_names):
-    """Analiza tablas y devuelve markdown puro. Sin JSON."""
+def _analyze_batch_md(batch: list, all_names: list) -> str:
+    """Analiza un lote de tablas y devuelve markdown puro. Sin JSON."""
     contexto = ", ".join(all_names)
-    msg = (
+    system_msg = (
         "Eres un experto en Power BI y DAX. "
         "Documenta cada tabla usando EXACTAMENTE los campos y descripciones del schema recibido.\n\n"
         "Formato obligatorio por tabla:\n\n"
@@ -264,41 +207,56 @@ def _analyze_batch_md(batch, all_names):
         "Si no hay descripcion, infiere el proposito a partir del nombre.\n\n"
         "**IMPORTANTE:** Lista TODAS las columnas del schema, una por linea, sin omitir ninguna.\n\n"
         "**Relaciones:**\n"
-        "- Con OtraTabla por CampoX\n\n"
+        "- Con OtraTabla por CampoX (o 'Sin relaciones definidas' si no hay ninguna)\n\n"
         "---\n\n"
-        "REGLAS: SOLO markdown. SIN JSON. SIN ejemplos de formulas ni medidas. "
-        "Lista cada columna del schema con su descripcion. En espanol."
+        "REGLAS ESTRICTAS:\n"
+        "- SOLO markdown. SIN JSON. SIN bloques de codigo. SIN medidas DAX.\n"
+        "- Lista CADA columna del schema con su descripcion, sin saltarse ninguna.\n"
+        "- Responde en espanol.\n\n"
+        f"Contexto del modelo completo: {contexto}"
     )
-    system_msg = msg + "\nContexto del modelo completo: " + contexto
     raw = call_llm(
         messages=[
             {"role": "system", "content": system_msg},
-            {"role": "user",   "content": "TABLAS: " + json.dumps(batch)},
+            {"role": "user",   "content": "TABLAS A DOCUMENTAR: " + json.dumps(batch)},
         ],
         temperature=0.1, max_tokens=6000,
     )
-    return re.sub(r"```json.*?```", "", raw, flags=re.DOTALL).strip()
+    # Eliminar cualquier bloque JSON que pudiera colarse
+    raw = re.sub(r"```json.*?```", "", raw, flags=re.DOTALL).strip()
+    raw = re.sub(r"```.*?```", "", raw, flags=re.DOTALL).strip()
+    return raw
 
 
-def generate_doc(schema, progress_callback=None):
-    """Genera documentacion completa en markdown."""
+def generate_doc(schema: dict, progress_callback=None) -> dict:
+    """
+    GENERA LA DOCUMENTACIÓN COMPLETA DEL MODELO EN MARKDOWN PURO.
+
+    Args:
+        schema:            Schema del modelo (tablas + columnas)
+        progress_callback: fn(step, total, names, msg) para actualizar UI
+
+    Returns:
+        dict con "markdown" (str), "n_tablas" (int), "resumen" (""), "tablas" ([])
+    """
     all_tables = schema.get("tables", [])
     all_names  = [t["name"] for t in all_tables]
     batch_size = 3 if len(all_tables) > 15 else 5
-    batches    = [all_tables[i:i+batch_size] for i in range(0, len(all_tables), batch_size)]
+    batches    = [all_tables[i:i + batch_size] for i in range(0, len(all_tables), batch_size)]
     md_parts   = []
+
     for step, batch in enumerate(batches, start=1):
         names = [t["name"] for t in batch]
         if progress_callback:
-            progress_callback(step, len(batches)+1, names, "Generando")
+            progress_callback(step, len(batches) + 1, names, "Generando")
         chunk = _analyze_batch_md(batch, all_names)
         if chunk:
             md_parts.append(chunk)
-        time.sleep(1)
-    separator = "\n\n"
+        time.sleep(DOC_CALL_PAUSE)
+
     return {
         "resumen":  "",
-        "markdown": separator.join(md_parts),
+        "markdown": "\n\n".join(md_parts),
         "n_tablas": len(all_tables),
         "tablas":   [],
     }

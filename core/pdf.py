@@ -1,14 +1,5 @@
-# ═══════════════════════════════════════════════════════════════════════════════
-# CORE/PDF.PY — GENERADOR DE PDF DESDE MARKDOWN
-# AnalytiQ AI Suite
-#
-# Recibe el doc_data con:
-#   - "resumen": string de texto plano
-#   - "markdown": string markdown completo generado por el LLM
-#   - "tablas": lista de dicts (estructura legacy, ignorada si hay markdown)
-#
-# Convierte el markdown a elementos ReportLab para generar un PDF profesional.
-# ═══════════════════════════════════════════════════════════════════════════════
+# GENERACIÓN COMPLETA DE PDF: PORTADA, HELPERS, ESTILOS Y CONSTRUCTOR
+# COMPATIBLE CON DOCUMENTACIÓN DE POWER BI (MARKDOWN) Y LOOKER/SHEETS/EXCEL (TABLAS JSON)
 
 import io
 import re
@@ -16,10 +7,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT
+from reportlab.lib.enums import TA_JUSTIFY
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, PageBreak, KeepTogether, Preformatted,
+    HRFlowable, PageBreak, KeepTogether,
 )
 
 from config.settings import (
@@ -27,7 +18,8 @@ from config.settings import (
     PDF_DARK, PDF_GRAY, PDF_LIGHT, PDF_BORDER, PDF_GREEN, PDF_TEAL, PDF_ACCENT,
 )
 
-# ── ESTILOS ───────────────────────────────────────────────────────────────────
+
+# ── FÁBRICA DE ESTILOS DE PÁRRAFO ─────────────────────────────────────────────
 
 def _s(name, **kw):
     return ParagraphStyle(name, **kw)
@@ -35,12 +27,8 @@ def _s(name, **kw):
 PDF_ST = {
     "section": _s("section", fontName="Helvetica-Bold", fontSize=7,  textColor=PDF_GRAY,
                   leading=10, spaceBefore=18, spaceAfter=6, letterSpacing=1.5),
-    "h2":      _s("h2",      fontName="Helvetica-Bold", fontSize=14, textColor=PDF_DARK,
-                  leading=18, spaceBefore=14, spaceAfter=4),
-    "h3":      _s("h3",      fontName="Helvetica-Bold", fontSize=11, textColor=PDF_DARK,
-                  leading=14, spaceBefore=10, spaceAfter=3),
-    "h4":      _s("h4",      fontName="Helvetica-Bold", fontSize=9.5, textColor=PDF_ACCENT,
-                  leading=13, spaceBefore=8, spaceAfter=2),
+    "h3":      _s("h3",      fontName="Helvetica-Bold", fontSize=12, textColor=PDF_DARK,
+                  leading=15, spaceBefore=10, spaceAfter=3),
     "body":    _s("body",    fontName="Helvetica",      fontSize=9.5, textColor=PDF_ACCENT,
                   leading=15, spaceAfter=5, alignment=TA_JUSTIFY),
     "bullet":  _s("bullet",  fontName="Helvetica",      fontSize=9,  textColor=PDF_ACCENT,
@@ -51,7 +39,8 @@ PDF_ST = {
                   textColor=colors.HexColor("#6B7280"), leading=12, spaceAfter=1),
 }
 
-# ── HELPERS ───────────────────────────────────────────────────────────────────
+
+# ── HELPERS DE FLUJO ──────────────────────────────────────────────────────────
 
 def _hr():
     return HRFlowable(width="100%", thickness=0.5, color=PDF_BORDER, spaceAfter=8, spaceBefore=4)
@@ -60,33 +49,31 @@ def _sp(h=6):
     return Spacer(1, h)
 
 def _body(t):
-    # Escapar caracteres especiales de ReportLab
-    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return Paragraph(t, PDF_ST["body"])
 
 def _h2(t):
-    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return Paragraph(t.upper(), PDF_ST["section"])
 
 def _h3(t):
-    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return Paragraph(t, PDF_ST["h3"])
 
-def _h4(t):
-    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return Paragraph(t, PDF_ST["h4"])
-
-def _bullet(t, pre_formatted=False):
-    if not pre_formatted:
-        t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def _bullet(t):
     return Paragraph(f"&bull;&nbsp;&nbsp;{t}", PDF_ST["bullet"])
+
+def _esc(t):
+    return (
+        t.replace("&", "&amp;").replace("<", "&lt;")
+         .replace(">", "&gt;").replace('"', "&quot;")
+         .replace(" ", "&nbsp;")
+    )
+
+
+# ── BLOQUE DE CÓDIGO DAX / LOOKER ─────────────────────────────────────────────
 
 def _code_block(lines: list):
     content = []
     for line in lines:
-        safe = (line.replace("&", "&amp;").replace("<", "&lt;")
-                    .replace(">", "&gt;").replace('"', "&quot;")
-                    .replace(" ", "&nbsp;"))
+        safe = _esc(line)
         if line.strip().startswith("--") or line.strip().startswith("#"):
             content.append(Paragraph(safe, PDF_ST["code_cm"]))
         elif line == "":
@@ -104,6 +91,7 @@ def _code_block(lines: list):
     ]))
     return tbl
 
+
 def _info_card(text: str, border_color=None):
     if border_color is None:
         border_color = PDF_DARK
@@ -118,86 +106,6 @@ def _info_card(text: str, border_color=None):
         ("BOX",           (0, 0), (-1, -1), 0.5, PDF_BORDER),
     ]))
     return tbl
-
-
-# ── CONVERTIDOR MARKDOWN → FLOWABLES ─────────────────────────────────────────
-
-def markdown_to_flowables(md_text: str) -> list:
-    """
-    CONVIERTE MARKDOWN A LISTA DE FLOWABLES DE REPORTLAB.
-    Soporta: # H1-H4, **negrita**, - listas, ```codigo```, texto plano.
-    """
-    flowables = []
-    lines = md_text.split("\n")
-    i = 0
-
-    while i < len(lines):
-        line = lines[i]
-
-        # Encabezados
-        if line.startswith("#### "):
-            flowables.append(_h4(line[5:].strip()))
-        elif line.startswith("### "):
-            flowables.append(_h3(line[4:].strip()))
-        elif line.startswith("## "):
-            flowables.append(_h2(line[3:].strip()))
-        elif line.startswith("# "):
-            flowables.append(_h2(line[2:].strip()))
-
-        # Bloque de código
-        elif line.strip().startswith("```"):
-            code_lines = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith("```"):
-                code_lines.append(lines[i])
-                i += 1
-            if code_lines:
-                flowables.append(_sp(4))
-                flowables.append(_code_block(code_lines))
-                flowables.append(_sp(4))
-
-        # Separador horizontal → salto de página entre tablas
-        elif line.strip() in ("---", "***", "___"):
-            flowables.append(PageBreak())
-
-        # Listas con - o *
-        elif re.match(r"^[\-\*]\s+", line):
-            text = re.sub(r"^[\-\*]\s+", "", line)
-            text = _inline_format(text)
-            flowables.append(_bullet(text, pre_formatted=True))
-
-        # Listas numeradas
-        elif re.match(r"^\d+\.\s+", line):
-            text = re.sub(r"^\d+\.\s+", "", line)
-            text = _inline_format(text)
-            flowables.append(_bullet(text, pre_formatted=True))
-
-        # Línea en blanco
-        elif line.strip() == "":
-            flowables.append(_sp(4))
-
-        # Texto normal
-        else:
-            text = _inline_format(line)
-            if text.strip():
-                flowables.append(Paragraph(text, PDF_ST["body"]))
-
-        i += 1
-
-    return flowables
-
-
-def _inline_format(text: str) -> str:
-    """Convierte markdown inline (**negrita**, `codigo`) a markup ReportLab."""
-    # Escapar primero
-    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    # **negrita**
-    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
-    # *cursiva*
-    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
-    # `codigo inline`
-    text = re.sub(r"`(.+?)`", r"<b>\1</b>", text)
-    return text
 
 
 # ── CALLBACKS DE PÁGINA ───────────────────────────────────────────────────────
@@ -220,18 +128,22 @@ def _on_page(canvas, doc):
     canvas.restoreState()
 
 
-def _make_cover_callback(platform_label: str, model_label: str):
+def _make_cover_callback(platform_label: str, model_label: str, n_tablas: int):
     def _on_cover(canvas, doc):
         canvas.saveState()
+        # Fondo completo oscuro
         canvas.setFillColor(PDF_DARK)
         canvas.rect(0, 0, W, H, fill=1, stroke=0)
+        # Banda superior
         canvas.setFillColor(colors.HexColor("#111827"))
         canvas.rect(0, H - 75 * mm, W, 75 * mm, fill=1, stroke=0)
+        # Icono
         canvas.setFillColor(colors.white)
         canvas.roundRect(20 * mm, H - 50 * mm, 20 * mm, 20 * mm, 4, fill=1, stroke=0)
         canvas.setFillColor(PDF_DARK)
         canvas.setFont("Helvetica-Bold", 18)
         canvas.drawCentredString(30 * mm, H - 36 * mm, "◈")
+        # Título
         canvas.setFillColor(colors.white)
         canvas.setFont("Helvetica-Bold", 32)
         canvas.drawString(20 * mm, H - 85 * mm, "Documentación del Modelo")
@@ -248,14 +160,27 @@ def _make_cover_callback(platform_label: str, model_label: str):
                           "Este documento describe el propósito de cada tabla y campo del modelo,")
         canvas.drawString(20 * mm, H - 125 * mm,
                           "las relaciones entre tablas y ejemplos generados por IA.")
+        # Info card con n_tablas — en la portada, encima del bloque de metadatos
+        canvas.setFillColor(colors.HexColor("#1F2937"))
+        canvas.roundRect(20 * mm, 68 * mm, W - 40 * mm, 14 * mm, 4, fill=1, stroke=0)
+        canvas.setStrokeColor(PDF_GREEN)
+        canvas.setLineWidth(2)
+        canvas.line(20 * mm, 68 * mm, 20 * mm, 82 * mm)
+        canvas.setFont("Helvetica", 8.5)
+        canvas.setFillColor(colors.white)
+        canvas.drawString(25 * mm, 77 * mm, f"Tablas documentadas: {n_tablas}")
+        canvas.setFillColor(colors.HexColor("#9CA3AF"))
+        canvas.drawString(25 * mm, 71 * mm,
+                          "Análisis: Descripción · Columnas · Relaciones  ·  GDPR-Safe · Solo metadatos")
+        # Bloque de metadatos inferior
         canvas.setFillColor(colors.HexColor("#111827"))
-        canvas.roundRect(20 * mm, 30 * mm, W - 40 * mm, 28 * mm, 6, fill=1, stroke=0)
+        canvas.roundRect(20 * mm, 30 * mm, W - 40 * mm, 34 * mm, 6, fill=1, stroke=0)
         fields = [
-            ("Generado por", "AnalytiQ AI Suite · 9Router + Fallback"),
-            ("Modelo IA",    model_label),
-            ("Privacidad",   "GDPR-Safe · Solo metadatos"),
+            ("GENERADO POR", "AnalytiQ AI Suite · 9Router + Fallback"),
+            ("MODELO IA",    model_label),
+            ("PRIVACIDAD",   "GDPR-Safe · Solo metadatos"),
         ]
-        xi, yi = 26 * mm, 53 * mm
+        xi, yi = 26 * mm, 59 * mm
         for label, val in fields:
             canvas.setFont("Helvetica-Bold", 7)
             canvas.setFillColor(PDF_GRAY)
@@ -263,38 +188,119 @@ def _make_cover_callback(platform_label: str, model_label: str):
             canvas.setFont("Helvetica", 8.5)
             canvas.setFillColor(colors.white)
             canvas.drawString(xi + 28 * mm, yi, val)
-            yi -= 7 * mm
+            yi -= 9 * mm
         canvas.restoreState()
     return _on_cover
 
 
-# ── CONSTRUCTOR PRINCIPAL DE PDF ──────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# CONVERSOR MARKDOWN → REPORTLAB (PARA POWER BI)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _markdown_to_story(md_text: str) -> list:
+    """
+    Convierte markdown puro generado por _analyze_batch_md en elementos ReportLab.
+    Soporta: ## H2, **negrita**, - bullet, `código inline`, texto normal, --- separador.
+    """
+    story = []
+    lines = md_text.split("\n")
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Separador ---
+        if re.match(r"^-{3,}$", stripped):
+            story.append(_hr())
+            story.append(_sp(6))
+            continue
+
+        # H2 → título de sección (nombre de tabla)
+        if stripped.startswith("## "):
+            titulo = stripped[3:].strip()
+            story.append(PageBreak())
+            story.append(_h2(titulo))
+            story.append(_hr())
+            story.append(_sp(4))
+            continue
+
+        # H3 → subtítulo
+        if stripped.startswith("### "):
+            story.append(_h3(stripped[4:].strip()))
+            story.append(_sp(2))
+            continue
+
+        # Bullet: - `Campo` — descripción
+        if stripped.startswith("- "):
+            content = stripped[2:].strip()
+            # Convertir `código` a negrita monoespaciada en XML ReportLab
+            content = re.sub(r"`([^`]+)`", r"<font name='Courier'>\1</font>", content)
+            # Convertir **negrita**
+            content = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", content)
+            story.append(_bullet(content))
+            continue
+
+        # Líneas **negrita** solas (ej: **Columnas:**)
+        if stripped.startswith("**") and stripped.endswith("**"):
+            texto = stripped[2:-2]
+            story.append(Paragraph(f"<b>{texto}</b>", PDF_ST["h3"]))
+            story.append(_sp(2))
+            continue
+
+        # Línea vacía → pequeño espacio
+        if not stripped:
+            story.append(_sp(4))
+            continue
+
+        # Texto normal — convertir inline markdown
+        content = stripped
+        content = re.sub(r"`([^`]+)`", r"<font name='Courier'>\1</font>", content)
+        content = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", content)
+        story.append(_body(content))
+
+    return story
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONSTRUCTOR DE PDF — POWER BI (MARKDOWN) Y OTRAS PLATAFORMAS (JSON)
+# ══════════════════════════════════════════════════════════════════════════════
 
 def build_doc_pdf(doc_data: dict, platform: str = "power_bi") -> bytes:
     """
     CONSTRUYE EL PDF DE DOCUMENTACIÓN COMPLETO.
 
-    Acepta dos formatos de doc_data:
-        A) Nuevo (markdown): {"resumen": str, "markdown": str, "n_tablas": int}
-        B) Legacy (JSON):    {"resumen": str, "tablas": [{"nombre":..., "descripcion":...}]}
+    Para Power BI lee doc_data["markdown"] (string markdown puro).
+    Para Looker/Sheets/Excel lee doc_data["tablas"] (lista de dicts JSON).
 
     Args:
-        doc_data: Diccionario con los datos de documentación
-        platform: Identificador de plataforma para etiquetas del PDF
+        doc_data: Dict con "markdown" o "tablas" según plataforma
+        platform: "power_bi" | "looker" | "sheets" | "excel"
 
     Returns:
         bytes: PDF listo para descargar
     """
-    # Etiquetas por plataforma
-    PLAT_LABELS = {
-        "power_bi": ("Power BI",        "Llama 3.3 70B · 9Router · Groq / SambaNova / Gemini", PDF_GREEN),
-        "looker":   ("Looker Studio",   "Llama 3.3 70B · 9Router · Gemini 2.0 Flash",          PDF_TEAL),
-        "sheets":   ("Google Sheets",   "Llama 3.3 70B · 9Router · Groq / SambaNova / Gemini", PDF_TEAL),
-        "excel":    ("Microsoft Excel", "Llama 3.3 70B · 9Router · Groq / SambaNova / Gemini", PDF_GREEN),
-    }
-    plat_label, model_label, accent_col = PLAT_LABELS.get(
-        platform, ("Power BI", "Llama 3.3 70B", PDF_GREEN)
-    )
+    # ETIQUETAS POR PLATAFORMA
+    if platform == "looker":
+        plat_label  = "Looker Studio"
+        model_label = "Llama 3.3 70B · 9Router · Gemini 2.0 Flash"
+        accent_col  = PDF_TEAL
+        code_label  = "Expresión"
+    elif platform == "sheets":
+        plat_label  = "Google Sheets"
+        model_label = "Llama 3.3 70B · 9Router · Groq / SambaNova / Gemini"
+        accent_col  = PDF_GREEN
+        code_label  = "Fórmula"
+    elif platform == "excel":
+        plat_label  = "Excel"
+        model_label = "Llama 3.3 70B · 9Router · Groq / SambaNova / Gemini"
+        accent_col  = PDF_GREEN
+        code_label  = "Fórmula"
+    else:  # power_bi
+        plat_label  = "Power BI"
+        model_label = "Llama 3.3 70B · 9Router · Groq / SambaNova / Gemini"
+        accent_col  = PDF_GREEN
+        code_label  = "DAX"
+
+    n_tablas = doc_data.get("n_tablas") or len(doc_data.get("tablas", []))
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -302,39 +308,23 @@ def build_doc_pdf(doc_data: dict, platform: str = "power_bi") -> bytes:
         leftMargin=25 * mm, rightMargin=25 * mm,
         topMargin=20 * mm,  bottomMargin=16 * mm,
     )
-    story = [PageBreak()]
+    # El story empieza vacío — la portada es 100% canvas, sin PageBreak inicial
+    story = []
 
-    # ── INFO CARD ─────────────────────────────────────────────────────────────
-    n_tablas = doc_data.get("n_tablas", len(doc_data.get("tablas", [])))
+    # ── POWER BI: renderizar desde markdown ───────────────────────────────────
+    if platform == "power_bi":
+        md = doc_data.get("markdown", "")
+        if md:
+            story += _markdown_to_story(md)
 
-    story += [
-        _info_card(
-            f"<b>Tablas documentadas:</b> {n_tablas}  ·  "
-            f"<b>Privacidad:</b> GDPR-Safe · Solo metadatos",
-            border_color=accent_col,
-        ),
-        _sp(8), PageBreak(),
-    ]
-
-    # ── CONTENIDO PRINCIPAL ───────────────────────────────────────────────────
-    # Formato A: markdown directo del LLM
-    if doc_data.get("markdown"):
-        md_flowables = markdown_to_flowables(doc_data["markdown"])
-        story += md_flowables
-
-    # Formato B: legacy JSON con lista de tablas (retrocompatibilidad)
-    elif doc_data.get("tablas"):
-        for tabla in doc_data["tablas"]:
-            # Soporte para tablas que sean strings (resumen en bruto) o dicts
-            if isinstance(tabla, str):
-                story += [_body(tabla), _sp(6)]
-                continue
-
+    # ── OTRAS PLATAFORMAS: renderizar desde tablas JSON ───────────────────────
+    else:
+        for tabla in doc_data.get("tablas", []):
             nombre = tabla.get("nombre", "")
             desc   = tabla.get("descripcion", "")
             cols   = tabla.get("columnas", [])
             rels   = tabla.get("relaciones", [])
-            daxs   = tabla.get("dax_sugeridos", tabla.get("formulas", []))
+            daxs   = tabla.get("dax_sugeridos", [])
 
             section = [_h2(nombre), _hr(), _sp(4)]
 
@@ -343,25 +333,17 @@ def build_doc_pdf(doc_data: dict, platform: str = "power_bi") -> bytes:
 
             if cols:
                 section += [_h3("Columnas / Campos"), _sp(3)]
-                # Columnas pueden ser lista de dicts o lista de strings
-                if cols and isinstance(cols[0], dict):
-                    col_data = [["Campo", "Propósito"]]
-                    for c in cols:
-                        col_data.append([
-                            Paragraph(str(c.get("nombre", c.get("name", ""))),
-                                      _s("cn", fontName="Courier", fontSize=8,
-                                         textColor=PDF_DARK, leading=11)),
-                            Paragraph(str(c.get("proposito", c.get("purpose", ""))),
-                                      PDF_ST["body"]),
-                        ])
-                else:
-                    col_data = [["Campo"]]
-                    for c in cols:
-                        col_data.append([Paragraph(str(c),
+                col_data = [["Campo", "Propósito"]]
+                for c in cols:
+                    col_data.append([
+                        Paragraph(
+                            c.get("nombre", ""),
                             _s("cn", fontName="Courier", fontSize=8,
-                               textColor=PDF_DARK, leading=11))])
-
-                t = Table(col_data, colWidths=[55 * mm, 105 * mm] if len(col_data[0]) > 1 else [160 * mm])
+                               textColor=PDF_DARK, leading=11)
+                        ),
+                        Paragraph(c.get("proposito", ""), PDF_ST["body"]),
+                    ])
+                t = Table(col_data, colWidths=[55 * mm, 105 * mm])
                 t.setStyle(TableStyle([
                     ("BACKGROUND",     (0, 0), (-1,  0), PDF_DARK),
                     ("TEXTCOLOR",      (0, 0), (-1,  0), colors.white),
@@ -377,30 +359,28 @@ def build_doc_pdf(doc_data: dict, platform: str = "power_bi") -> bytes:
                 section += [t, _sp(10)]
 
             if rels:
-                section += [_h3("Relaciones"), _sp(3)]
+                section += [_h3("Relaciones con otras tablas/fuentes"), _sp(3)]
                 for r in rels:
-                    section.append(_bullet(str(r)))
+                    section.append(_bullet(r))
                 section.append(_sp(8))
 
             if daxs:
-                label = "Ejemplos sugeridos"
-                section += [_h3(label), _sp(3)]
+                section += [_h3(f"Ejemplos {code_label} sugeridos"), _sp(3)]
                 for d in daxs:
-                    if isinstance(d, dict):
-                        nombre_d = d.get("nombre", d.get("name", ""))
-                        desc_d   = d.get("descripcion", d.get("description", ""))
-                        codigo   = d.get("codigo", d.get("code", ""))
-                        section += [
-                            Paragraph(f"<b>{nombre_d}</b> — {desc_d}", PDF_ST["bullet"]),
-                            _sp(3),
-                            _code_block(codigo.split("\n")),
-                            _sp(8),
-                        ]
+                    section += [
+                        Paragraph(
+                            f"<b>{d.get('nombre', '')}</b> — {d.get('descripcion', '')}",
+                            PDF_ST["bullet"]
+                        ),
+                        _sp(3),
+                        _code_block(d.get("codigo", "").split("\n")),
+                        _sp(8),
+                    ]
 
             section.append(PageBreak())
             story.append(KeepTogether(section[:4]))
             story += section[4:]
 
-    cover_fn = _make_cover_callback(plat_label, model_label)
+    cover_fn = _make_cover_callback(plat_label, model_label, n_tablas)
     doc.build(story, onFirstPage=cover_fn, onLaterPages=_on_page)
     return buffer.getvalue()
