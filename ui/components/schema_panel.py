@@ -80,7 +80,10 @@ def render_schema_panel(platform: str) -> dict | None:
                         "tables": [
                             {
                                 "name":          t["name"],
-                                "columns":       [{"name": c["name"]} for c in t.get("columns", [])],
+                                "columns":       [
+                                    {k: v for k, v in c.items() if k in ("name", "description", "type")}
+                                    for c in t.get("columns", [])
+                                ],
                                 "relationships": t.get("relationships", []),
                             }
                             for t in data.get("tables", [])

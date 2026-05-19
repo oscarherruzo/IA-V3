@@ -567,6 +567,21 @@ def load_css(platform: str = "power_bi") -> str:
         transform: translateY(-1px) !important;
     }}
 
+    /* Botón deshabilitado: gris neutro */
+    div.stButton > button:disabled {{
+        background: #D1D5DB !important;
+        color: #9CA3AF !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }}
+
+    /* Botón docs activo: naranja cuando hay schema */
+    div.stButton > button.docs-btn-active {{
+        background: #EA580C !important;
+        color: #FFFFFF !important;
+    }}
+
     /* Botones de descarga: neutral oscuro */
     div.stDownloadButton > button {{
         background: #1A1D23 !important; color: #FFFFFF !important;

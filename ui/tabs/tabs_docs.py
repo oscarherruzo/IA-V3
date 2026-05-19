@@ -50,6 +50,27 @@ def init_docs_state():
 def render_tabs_docs():
     ss = st.session_state
 
+    # Inyecta color naranja en el botón principal cuando hay schema cargado
+    btn_color   = "#EA580C" if ss.docs_schema is not None else "#D1D5DB"
+    btn_hover   = "#C2410C" if ss.docs_schema is not None else "#D1D5DB"
+    btn_text    = "#FFFFFF" if ss.docs_schema is not None else "#9CA3AF"
+    btn_cursor  = "pointer" if ss.docs_schema is not None else "not-allowed"
+    st.markdown(f"""
+    <style>
+    div[data-testid="stButton"]:has(button[key="docs_btn_generate"]) button,
+    div.stButton > button[kind="primary"] {{
+        background: {btn_color} !important;
+        color: {btn_text} !important;
+        cursor: {btn_cursor} !important;
+    }}
+    div.stButton > button[kind="primary"]:hover {{
+        background: {btn_hover} !important;
+        transform: {"translateY(-1px)" if ss.docs_schema else "none"} !important;
+        box-shadow: {"0 4px 10px -2px rgba(0,0,0,0.18)" if ss.docs_schema else "none"} !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
     # CABECERA
     st.markdown("""
         <div class="card module-docs">
@@ -78,9 +99,8 @@ def render_tabs_docs():
         else:
             n       = len(ss.docs_schema.get("tables", []))
             n_lotes = max(1, (n + 2) // 3)
-            plat    = PLATFORM_LABELS.get(ss.docs_platform, ss.docs_platform)
             st.markdown(
-                f'<p class="hint-note">{n} tablas · {n_lotes} lote(s) · {plat} · ~{n_lotes * 20}s</p>',
+                f'<p class="hint-note">{n} tablas · {n_lotes} lote(s) · ~{n_lotes * 20}s estimados</p>',
                 unsafe_allow_html=True,
             )
     st.markdown('</div>', unsafe_allow_html=True)
@@ -108,8 +128,9 @@ def render_tabs_docs():
                 progress.progress(100, text="Completado")
                 ss.docs_doc_result   = doc_data
                 ss.docs_doc_platform = ss.docs_platform
+                n_doc = doc_data.get("n_tablas") or len(doc_data.get("tablas", []))
                 status.update(
-                    label=f"Documentación lista · {len(doc_data.get('tablas', []))} tablas documentadas",
+                    label=f"Documentación lista · {n_doc} tablas documentadas",
                     state="complete",
                 )
                 st.toast("Documentación generada correctamente")
@@ -125,18 +146,7 @@ def render_tabs_docs():
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<p class="card-title">Configuración</p>', unsafe_allow_html=True)
 
-    col_plat, col_upload = st.columns([1, 2])
-    with col_plat:
-        selected_platform = st.selectbox(
-            "Plataforma a documentar",
-            options=list(PLATFORM_LABELS.keys()),
-            format_func=lambda x: PLATFORM_LABELS[x],
-            key="docs_platform_select",
-            index=list(PLATFORM_LABELS.keys()).index(ss.docs_platform),
-        )
-        ss.docs_platform = selected_platform
-
-    with col_upload:
+    with st.container():
         uploaded = st.file_uploader(
             "Sube el JSON del modelo de datos",
             type=["json"],
@@ -159,27 +169,13 @@ def render_tabs_docs():
                     }
                     ss.docs_schema_name = uploaded.name
                     st.success(f"Schema cargado: {len(ss.docs_schema['tables'])} tablas.")
+                    st.rerun()
                 except Exception:
                     st.error("El archivo JSON no tiene un formato válido.")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── 5. DETALLE DEL SCHEMA ─────────────────────────────────────────────────
-    if ss.docs_schema:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<p class="card-title">Schema cargado</p>', unsafe_allow_html=True)
-        n_tables = len(ss.docs_schema["tables"])
-        st.markdown(
-            f'<div class="status-ok"><span class="status-dot"></span>'
-            f'{n_tables} tabla(s) listas · {PLATFORM_LABELS.get(ss.docs_platform)}</div>',
-            unsafe_allow_html=True,
-        )
-        for t in ss.docs_schema["tables"]:
-            rels = len(t.get("relationships", []))
-            with st.expander(f"{t['name']} ({len(t['columns'])} cols · {rels} rels)"):
-                for col in t["columns"]:
-                    st.caption(f"↳ {col['name']}")
-        st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 def _render_doc_result(doc_data: dict, platform: str):
@@ -188,11 +184,7 @@ def _render_doc_result(doc_data: dict, platform: str):
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<p class="card-title">Resultado de la documentación</p>', unsafe_allow_html=True)
 
-    resumen = doc_data.get("resumen", "")
-    if resumen:
-        st.markdown(resumen)
-
-    n_tablas = len(doc_data.get("tablas", []))
+    n_tablas = doc_data.get("n_tablas") or len(doc_data.get("tablas", []))
     st.markdown(
         f'<p class="hint-ok">{n_tablas} tablas documentadas correctamente.</p>',
         unsafe_allow_html=True,
@@ -217,14 +209,5 @@ def _render_doc_result(doc_data: dict, platform: str):
         if st.button("Limpiar resultado", type="secondary", key="docs_clear_result"):
             ss.docs_doc_result = None
             st.rerun()
-
-    # Detalle por tabla
-    if doc_data.get("tablas"):
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown('<p class="card-title">Detalle por tabla</p>', unsafe_allow_html=True)
-        for tabla in doc_data["tablas"]:
-            nombre = tabla.get("nombre", "Sin nombre")
-            with st.expander(f"{nombre}"):
-                st.markdown(tabla.get("descripcion", ""))
 
     st.markdown('</div>', unsafe_allow_html=True)

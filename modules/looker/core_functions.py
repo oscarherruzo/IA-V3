@@ -376,22 +376,22 @@ def _analyze_batch_lk_md(batch, all_names):
     contexto = ", ".join(all_names)
     msg = (
         "Eres un experto en Looker Studio. "
-        "Documenta cada tabla en markdown limpio:\n\n"
+        "Documenta cada tabla usando EXACTAMENTE los campos y descripciones del schema recibido.\n\n"
+        "Formato obligatorio por tabla:\n\n"
         "## NombreTabla\n\n"
-        "Descripcion breve.\n\n"
+        "Descripcion breve del proposito de la tabla.\n\n"
         "**Columnas:**\n"
-        "- `NombreColumna` - que almacena\n\n"
+        "- `NombreColumna` — descripcion exacta del campo segun el schema. "
+        "Si el schema incluye una descripcion para ese campo, usala tal cual. "
+        "Si no hay descripcion, infiere el proposito a partir del nombre.\n\n"
+        "**IMPORTANTE:** Lista TODAS las columnas del schema, una por linea, sin omitir ninguna.\n\n"
         "**Relaciones:**\n"
         "- Con OtraTabla por CampoX\n\n"
-        "**Ejemplos campos calculados Looker:**\n"
-        "```\n"
-        "ejemplo\n"
-        "```\n\n"
         "---\n\n"
-        "REGLAS: SOLO markdown. SIN JSON. "
-        "2 ejemplos de campos calculados Looker por tabla. En espanol."
+        "REGLAS: SOLO markdown. SIN JSON. SIN ejemplos de formulas ni campos calculados. "
+        "Lista cada columna del schema con su descripcion. En espanol."
     )
-    system_msg = msg + "\nContexto: " + contexto
+    system_msg = msg + "\nContexto del modelo completo: " + contexto
     raw = call_llm(
         messages=[
             {"role": "system", "content": system_msg},
@@ -406,19 +406,6 @@ def generate_doc_looker(schema, progress_callback=None):
     """Genera documentacion completa en markdown."""
     all_tables = schema.get("tables", [])
     all_names  = [t["name"] for t in all_tables]
-    raw_res = call_llm(
-        messages=[
-            {"role": "system", "content": (
-                "Eres experto en Looker Studio. "
-                "Escribe un parrafo de 2-3 frases en texto plano. "
-                "SIN JSON. SIN markdown. En espanol."
-            )},
-            {"role": "user", "content": "Tablas: " + ", ".join(all_names)},
-        ],
-        temperature=0.1, max_tokens=400,
-    )
-    resumen = _limpiar_resumen(raw_res)
-    time.sleep(1)
     batch_size = 3 if len(all_tables) > 15 else 5
     batches    = [all_tables[i:i+batch_size] for i in range(0, len(all_tables), batch_size)]
     md_parts   = []
@@ -432,7 +419,7 @@ def generate_doc_looker(schema, progress_callback=None):
         time.sleep(1)
     separator = "\n\n"
     return {
-        "resumen":  resumen,
+        "resumen":  "",
         "markdown": separator.join(md_parts),
         "n_tablas": len(all_tables),
         "tablas":   [],

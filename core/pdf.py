@@ -76,8 +76,9 @@ def _h4(t):
     t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return Paragraph(t, PDF_ST["h4"])
 
-def _bullet(t):
-    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+def _bullet(t, pre_formatted=False):
+    if not pre_formatted:
+        t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return Paragraph(f"&bull;&nbsp;&nbsp;{t}", PDF_ST["bullet"])
 
 def _code_block(lines: list):
@@ -155,21 +156,21 @@ def markdown_to_flowables(md_text: str) -> list:
                 flowables.append(_code_block(code_lines))
                 flowables.append(_sp(4))
 
-        # Separador horizontal
+        # Separador horizontal → salto de página entre tablas
         elif line.strip() in ("---", "***", "___"):
-            flowables.append(_hr())
+            flowables.append(PageBreak())
 
         # Listas con - o *
         elif re.match(r"^[\-\*]\s+", line):
             text = re.sub(r"^[\-\*]\s+", "", line)
             text = _inline_format(text)
-            flowables.append(_bullet(text))
+            flowables.append(_bullet(text, pre_formatted=True))
 
         # Listas numeradas
         elif re.match(r"^\d+\.\s+", line):
             text = re.sub(r"^\d+\.\s+", "", line)
             text = _inline_format(text)
-            flowables.append(_bullet(text))
+            flowables.append(_bullet(text, pre_formatted=True))
 
         # Línea en blanco
         elif line.strip() == "":
@@ -195,7 +196,7 @@ def _inline_format(text: str) -> str:
     # *cursiva*
     text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
     # `codigo inline`
-    text = re.sub(r"`(.+?)`", r'<font name="Courier" size="8">\1</font>', text)
+    text = re.sub(r"`(.+?)`", r"<b>\1</b>", text)
     return text
 
 
@@ -303,17 +304,12 @@ def build_doc_pdf(doc_data: dict, platform: str = "power_bi") -> bytes:
     )
     story = [PageBreak()]
 
-    # ── RESUMEN ───────────────────────────────────────────────────────────────
-    resumen = doc_data.get("resumen", "")
+    # ── INFO CARD ─────────────────────────────────────────────────────────────
     n_tablas = doc_data.get("n_tablas", len(doc_data.get("tablas", [])))
 
     story += [
-        _h2("Resumen del modelo"), _hr(), _sp(4),
-        _body(resumen) if resumen else _sp(2),
-        _sp(6),
         _info_card(
             f"<b>Tablas documentadas:</b> {n_tablas}  ·  "
-            f"<b>Plataforma:</b> {plat_label}  ·  "
             f"<b>Privacidad:</b> GDPR-Safe · Solo metadatos",
             border_color=accent_col,
         ),
