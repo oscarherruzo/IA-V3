@@ -1,0 +1,26 @@
+{
+  "tables": [
+    {
+      "name": "Ventas",
+      "columns": [
+        {"name": "Fecha"},
+        {"name": "Ingresos"},
+        {"name": "Cantidad"},
+        {"name": "Email"},
+        {"name": "Categoría"},
+        {"name": "Región"}
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Costos",
+      "columns": [
+        {"name": "Fecha"},
+        {"name": "Costo"},
+        {"name": "Proveedor"},
+        {"name": "Categoría"}
+      ],
+      "relationships": []
+    }
+  ]
+}

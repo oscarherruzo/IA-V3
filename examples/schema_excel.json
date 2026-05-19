@@ -1,0 +1,27 @@
+{
+  "tables": [
+    {
+      "name": "Datos_Ventas",
+      "columns": [
+        {"name": "Fecha"},
+        {"name": "Ventas"},
+        {"name": "Costos"},
+        {"name": "Región"},
+        {"name": "Producto"},
+        {"name": "Vendedor"}
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Clientes",
+      "columns": [
+        {"name": "ClienteID"},
+        {"name": "Nombre"},
+        {"name": "Email"},
+        {"name": "País"},
+        {"name": "Segmento"}
+      ],
+      "relationships": []
+    }
+  ]
+}

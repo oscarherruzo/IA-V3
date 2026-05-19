@@ -1,0 +1,33 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# DAX AI ASSISTANT v2 — DEPENDENCIAS
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# INSTALACIÓN:
+#   pip install -r requirements.txt
+#
+# PROVEEDORES LLM:
+#   - 9Router (primario, endpoint local OpenAI-compatible)
+#   - Groq (fallback 1)
+#   - SambaNova (fallback 2)
+#   - Gemini (fallback 3)
+#
+
+# CORE FRAMEWORK
+streamlit>=1.32.0
+
+# CLIENTES LLM
+openai>=1.30.0          # COMPATIBLE CON 9ROUTER Y SAMBANOVA
+groq>=0.9.0             # CLIENTE GROQ (FALLBACK 1)
+google-genai>=0.8.0     # CLIENTE GEMINI (FALLBACK 3)
+
+# PDF Y DOCUMENTACIÓN
+reportlab>=4.1.0
+
+# BASE DE DATOS
+sqlalchemy
+pyodbc
+
+# UTILIDADES
+python-dotenv
+requests
+mistune>=3.0.0

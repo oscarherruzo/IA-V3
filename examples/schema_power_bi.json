@@ -1,0 +1,60 @@
+{
+  "tables": [
+    {
+      "name": "FactVentas",
+      "columns": [
+        {"name": "VentaID"},
+        {"name": "FechaID"},
+        {"name": "ClienteID"},
+        {"name": "ProductoID"},
+        {"name": "Importe"},
+        {"name": "Cantidad"},
+        {"name": "Coste"},
+        {"name": "Descuento"}
+      ],
+      "relationships": [
+        {"from_column": "FechaID",    "to_table": "DimFecha",    "to_column": "FechaID",    "direction": "Many-to-One"},
+        {"from_column": "ClienteID",  "to_table": "DimCliente",  "to_column": "ClienteID",  "direction": "Many-to-One"},
+        {"from_column": "ProductoID", "to_table": "DimProducto", "to_column": "ProductoID", "direction": "Many-to-One"}
+      ]
+    },
+    {
+      "name": "DimFecha",
+      "columns": [
+        {"name": "FechaID"},
+        {"name": "Fecha"},
+        {"name": "Anio"},
+        {"name": "Trimestre"},
+        {"name": "Mes"},
+        {"name": "NombreMes"},
+        {"name": "Semana"},
+        {"name": "DiaSemana"}
+      ],
+      "relationships": []
+    },
+    {
+      "name": "DimCliente",
+      "columns": [
+        {"name": "ClienteID"},
+        {"name": "NombreCliente"},
+        {"name": "Segmento"},
+        {"name": "Region"},
+        {"name": "Pais"},
+        {"name": "Ciudad"}
+      ],
+      "relationships": []
+    },
+    {
+      "name": "DimProducto",
+      "columns": [
+        {"name": "ProductoID"},
+        {"name": "NombreProducto"},
+        {"name": "Categoria"},
+        {"name": "Subcategoria"},
+        {"name": "PrecioLista"},
+        {"name": "CosteUnitario"}
+      ],
+      "relationships": []
+    }
+  ]
+}

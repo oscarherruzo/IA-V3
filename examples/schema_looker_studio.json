@@ -1,0 +1,38 @@
+{
+  "tables": [
+    {
+      "name": "GA4_Sessions",
+      "columns": [
+        {"name": "date"},
+        {"name": "sessions"},
+        {"name": "users"},
+        {"name": "new_users"},
+        {"name": "bounce_rate"},
+        {"name": "avg_session_duration"},
+        {"name": "pageviews"},
+        {"name": "source"},
+        {"name": "medium"},
+        {"name": "campaign"},
+        {"name": "channel_grouping"},
+        {"name": "country"},
+        {"name": "city"},
+        {"name": "device_category"}
+      ],
+      "relationships": []
+    },
+    {
+      "name": "Conversiones",
+      "columns": [
+        {"name": "date"},
+        {"name": "conversions"},
+        {"name": "conversion_value"},
+        {"name": "goal_name"},
+        {"name": "source"},
+        {"name": "medium"},
+        {"name": "campaign"},
+        {"name": "device_category"}
+      ],
+      "relationships": []
+    }
+  ]
+}
